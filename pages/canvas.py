@@ -17,11 +17,13 @@ from core.ai.router import AIRouter
 from core.api_keys import resolve_api_keys
 from core.errors import friendly_error_message
 from core.intake import UnitIntake, build_intake_prompt
+from core.db import LibraryError, is_library_configured, submit_for_review
 from core.prompts import (
     ARTIFACT_FORMATS,
     CANVAS_SYSTEM_PROMPT,
     QUICK_START_PROMPTS,
     build_artifact_instruction,
+    build_variant_instruction,
 )
 from core.refine import build_refine_prompt
 from core.session_io import SessionImportError, export_session_json, import_session_json
@@ -30,11 +32,14 @@ from core.session_store import (
     add_artifact,
     add_material,
     add_message,
+    artifacts_by_variant_group,
+    delete_artifact,
     has_pending_user_turn,
     init_session,
     reset_conversation,
 )
 from core.sources import fetch_url_material, image_to_material, materials_to_context_text, pdf_to_material
+from core.translate import build_translate_prompt
 from exporters.docx_builder import clean_html_tags, markdown_to_docx, sanitize_filename
 from exporters.diagram_builder import DiagramError, build_board_image_svg, build_unit_map_svg
 from exporters.pptx_builder import build_slide_outline_pptx
@@ -334,8 +339,37 @@ with canvas_col:
     if not st.session_state.artifacts:
         st.info("チャットで相談し、成果物を生成するとここに表示されます。")
     else:
+        # ---- バージョン比較（別パターンが2件以上あるグループを並べて表示） ----
+        seen_groups: set[str] = set()
+        for a in st.session_state.artifacts:
+            if a.variant_group and a.variant_group not in seen_groups:
+                group_members = artifacts_by_variant_group(a.variant_group)
+                if len(group_members) >= 2:
+                    seen_groups.add(a.variant_group)
+                    with st.expander(f"⚖️ 比較する: {a.label}（{len(group_members)}パターン）", expanded=True):
+                        cmp_cols = st.columns(len(group_members))
+                        for cmp_col, member in zip(cmp_cols, group_members):
+                            with cmp_col:
+                                st.markdown(f"**{member.variant_label or member.label}**")
+                                with st.container(height=220, border=True):
+                                    st.markdown(member.content_md)
+                                if st.button(
+                                    "この案を採用（他を削除）",
+                                    key=f"adopt_{member.artifact_id}",
+                                    use_container_width=True,
+                                ):
+                                    for other in group_members:
+                                        if other.artifact_id != member.artifact_id:
+                                            delete_artifact(other.artifact_id)
+                                    member.variant_group = ""
+                                    member.variant_label = ""
+                                    st.rerun()
+
         tab_labels = [
-            f"{a.label} #{i+1}" for i, a in enumerate(st.session_state.artifacts)
+            f"{a.label}"
+            + (f"（{a.variant_label}）" if a.variant_label else "")
+            + f" #{i+1}"
+            for i, a in enumerate(st.session_state.artifacts)
         ]
         tabs = st.tabs(tab_labels)
         for tab, artifact in zip(tabs, st.session_state.artifacts):
@@ -396,6 +430,107 @@ with canvas_col:
                                     st.error(friendly_error_message(e))
                     else:
                         st.caption("APIキーを設定すると使えます。")
+
+                # ---- 別パターンを生成して比較 ----
+                with st.expander("🔀 別パターンを生成して比較"):
+                    st.caption(
+                        "同じテーマで、切り口や活動の組み立てが異なる別案をもう1つ作成します。"
+                        "両方できたら見比べて、良い方を採用できます。"
+                    )
+                    if selected_provider_id and st.button(
+                        "別パターンを生成", key=f"variant_btn_{artifact.artifact_id}"
+                    ):
+                        with st.spinner("別パターンを生成中..."):
+                            try:
+                                from core.ai.base import ChatMessage
+                                group_id = artifact.variant_group or artifact.artifact_id
+                                if not artifact.variant_group:
+                                    artifact.variant_group = group_id
+                                    artifact.variant_label = "パターンA"
+                                existing_in_group = artifacts_by_variant_group(group_id)
+                                next_label = f"パターン{chr(65 + len(existing_in_group))}"
+
+                                variant_prompt = build_variant_instruction(
+                                    artifact.artifact_type, edited
+                                )
+                                variant_text = "".join(
+                                    router.stream_chat(
+                                        selected_provider_id, selected_model,
+                                        CANVAS_SYSTEM_PROMPT,
+                                        [ChatMessage(role="user", text=variant_prompt)],
+                                    )
+                                )
+                                add_artifact(Artifact(
+                                    artifact_id=str(uuid.uuid4())[:8],
+                                    artifact_type=artifact.artifact_type,
+                                    label=artifact.label,
+                                    content_md=clean_html_tags(variant_text),
+                                    variant_group=group_id,
+                                    variant_label=next_label,
+                                ))
+                                st.success(f"{next_label} を生成しました。下の「⚖️ 比較する」から見比べられます。")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(friendly_error_message(e))
+                    elif not selected_provider_id:
+                        st.caption("APIキーを設定すると使えます。")
+
+                # ---- 英語版を生成（ALT・外国籍家庭向け） ----
+                with st.expander("🌐 英語版を生成（ALT・外国籍家庭向け）"):
+                    st.caption("同じ内容を、ALTや日本語がまだ得意でない家庭にも伝わる英語に書き直します。")
+                    if selected_provider_id and st.button(
+                        "英語版を生成", key=f"translate_btn_{artifact.artifact_id}"
+                    ):
+                        with st.spinner("英語版を作成中..."):
+                            try:
+                                from core.ai.base import ChatMessage
+                                translate_prompt = build_translate_prompt(artifact.label, edited)
+                                translated_text = "".join(
+                                    router.stream_chat(
+                                        selected_provider_id, selected_model,
+                                        "You are a bilingual Japanese-English education assistant.",
+                                        [ChatMessage(role="user", text=translate_prompt)],
+                                    )
+                                )
+                                add_artifact(Artifact(
+                                    artifact_id=str(uuid.uuid4())[:8],
+                                    artifact_type=artifact.artifact_type,
+                                    label=f"{artifact.label} (English)",
+                                    content_md=clean_html_tags(translated_text),
+                                ))
+                                st.success("英語版を生成しました。新しいタブに追加されました。")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(friendly_error_message(e))
+                    elif not selected_provider_id:
+                        st.caption("APIキーを設定すると使えます。")
+
+                # ---- 管理職への確認依頼 ----
+                with st.expander("📤 管理職に確認を依頼"):
+                    if is_library_configured():
+                        submitter_name = st.text_input(
+                            "お名前", key=f"submitter_{artifact.artifact_id}"
+                        )
+                        if st.button("この内容で確認を依頼する", key=f"submit_review_{artifact.artifact_id}"):
+                            if not submitter_name:
+                                st.warning("お名前を入力してください。")
+                            else:
+                                try:
+                                    submit_for_review(
+                                        submitter_name=submitter_name,
+                                        artifact_label=title,
+                                        artifact_type=artifact.artifact_type,
+                                        content_md=edited,
+                                    )
+                                    st.success("確認依頼を送信しました。「確認・承認」ページから状況を確認できます。")
+                                except LibraryError as e:
+                                    st.error(str(e))
+                    else:
+                        st.caption(
+                            "この機能はまだ設定されていません。管理担当の先生に、"
+                            "README.md の「管理職の確認・承認フローを使う」の手順で"
+                            "設定してもらってください。"
+                        )
 
                 extra_export = EXTRA_EXPORTS.get(artifact.artifact_type)
                 dl_cols = st.columns(2 if extra_export else 1)
