@@ -97,6 +97,36 @@ ARTIFACT_FORMATS = {
 }
 
 
+def build_variant_instruction(artifact_type: str, existing_content: str) -> str:
+    """既存の成果物とは違うアプローチの「別パターン」を生成するための指示を組み立てる。"""
+    if artifact_type not in ARTIFACT_FORMATS:
+        raise ValueError(f"unknown artifact_type: {artifact_type}")
+    fmt = ARTIFACT_FORMATS[artifact_type]
+    return f"""
+すでに1つ「{fmt['label']}」の案があります。それとは明確に異なるアプローチ・構成の
+「別パターン」をもう1つ作成してください（微修正ではなく、切り口や活動の組み立て自体を
+変えること。例: 講義中心 → 体験活動中心、個人作業 → グループ活動中心 等）。
+
+【出力ルール】
+1. HTMLタグは使わず、Markdownのみを使用すること。
+2. 表（table）は必ず以下の厳密なMarkdown表形式で出力すること：
+   - 各行は必ず | で始まり | で終わること
+   - ヘッダー行の直後に |---|---| の区切り行を入れること
+   - セル内では絶対に改行しないこと
+   - 表の前後に空行を入れないこと
+3. コードブロックが必要な場合は ```text で囲むこと。
+4. 見出しは ## や ### を使うこと。
+5. 前置きや説明は書かず、成果物本文のみを出力すること。
+
+【出力構成】
+{fmt['structure']}
+
+--- 既存の案（参考。この内容とは異なる切り口にすること） ---
+{existing_content}
+--- ここまで ---
+""".strip()
+
+
 def build_artifact_instruction(artifact_type: str, extra_context: str = "") -> str:
     """成果物生成用の追加指示を組み立てる。会話履歴に続けてuserメッセージとして送る。"""
     if artifact_type not in ARTIFACT_FORMATS:

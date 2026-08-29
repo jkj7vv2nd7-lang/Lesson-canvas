@@ -141,3 +141,73 @@ def list_grades_and_subjects() -> tuple[list[str], list[str]]:
         return grades, subjects
     except Exception:
         return [], []
+
+
+# ==========================================
+# 管理職の確認・承認フロー
+# ==========================================
+REVIEW_TABLE_NAME = "artifact_reviews"
+
+
+@dataclass
+class ArtifactReview:
+    id: str
+    submitter_name: str
+    artifact_label: str
+    artifact_type: str
+    content_md: str
+    status: str            # "pending" / "approved" / "rejected"
+    reviewer_name: str
+    reviewer_comment: str
+    created_at: str
+    reviewed_at: str | None
+
+
+def submit_for_review(
+    *, submitter_name: str, artifact_label: str, artifact_type: str, content_md: str
+) -> None:
+    """成果物を管理職の確認待ちとして登録する。"""
+    try:
+        client = _get_client()
+        client.table(REVIEW_TABLE_NAME).insert({
+            "submitter_name": submitter_name,
+            "artifact_label": artifact_label,
+            "artifact_type": artifact_type,
+            "content_md": content_md,
+            "status": "pending",
+            "reviewer_name": "",
+            "reviewer_comment": "",
+        }).execute()
+    except Exception as e:
+        raise LibraryError(f"確認依頼の送信に失敗しました: {e}") from e
+
+
+def list_reviews(*, status: str = "", submitter_name: str = "") -> list[ArtifactReview]:
+    """確認待ち一覧を取得する。statusで絞り込み可能（''は全件）。"""
+    try:
+        client = _get_client()
+        query = client.table(REVIEW_TABLE_NAME).select("*").order("created_at", desc=True)
+        if status:
+            query = query.eq("status", status)
+        if submitter_name:
+            query = query.eq("submitter_name", submitter_name)
+        res = query.execute()
+        return [ArtifactReview(**row) for row in res.data]
+    except Exception as e:
+        raise LibraryError(f"確認依頼一覧の取得に失敗しました: {e}") from e
+
+
+def update_review_status(
+    review_id: str, *, status: str, reviewer_name: str, reviewer_comment: str
+) -> None:
+    """管理職が承認/差し戻しを行う。"""
+    try:
+        client = _get_client()
+        client.table(REVIEW_TABLE_NAME).update({
+            "status": status,
+            "reviewer_name": reviewer_name,
+            "reviewer_comment": reviewer_comment,
+            "reviewed_at": datetime.now(timezone.utc).isoformat(),
+        }).eq("id", review_id).execute()
+    except Exception as e:
+        raise LibraryError(f"確認結果の更新に失敗しました: {e}") from e

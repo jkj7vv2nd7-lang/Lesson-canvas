@@ -23,6 +23,8 @@ class Artifact:
     content_md: str
     created_at: str = field(default_factory=lambda: datetime.now().strftime("%H:%M:%S"))
     title_meta: dict = field(default_factory=dict)  # docx出力用のタイトル/サブタイトル情報
+    variant_group: str = ""     # 同じ成果物の別パターン比較用のグループID（空なら単独）
+    variant_label: str = ""     # 比較UIでの表示名（例: "パターンA"）
 
 
 def init_session() -> None:
@@ -82,3 +84,15 @@ def has_pending_user_turn() -> bool:
     """直近のメッセージがuserのまま（AI応答が未生成/失敗）かどうか。"""
     history = st.session_state.chat_history
     return bool(history) and history[-1].role == "user"
+
+
+def delete_artifact(artifact_id: str) -> None:
+    st.session_state.artifacts = [
+        a for a in st.session_state.artifacts if a.artifact_id != artifact_id
+    ]
+    if st.session_state.active_artifact_id == artifact_id:
+        st.session_state.active_artifact_id = None
+
+
+def artifacts_by_variant_group(group_id: str) -> list[Artifact]:
+    return [a for a in st.session_state.artifacts if a.variant_group == group_id]
