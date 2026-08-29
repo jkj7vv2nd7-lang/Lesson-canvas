@@ -16,6 +16,7 @@ import streamlit as st
 from core.ai.router import AIRouter
 from core.api_keys import resolve_api_keys
 from core.errors import friendly_error_message
+from core.intake import UnitIntake, build_intake_prompt
 from core.prompts import (
     ARTIFACT_FORMATS,
     CANVAS_SYSTEM_PROMPT,
@@ -196,23 +197,67 @@ with chat_col:
             with st.chat_message("user" if msg.role == "user" else "assistant"):
                 st.markdown(msg.text)
 
-    # ---- 初回のみ: クイックスタート（相談のきっかけ）----
+    # ---- 初回のみ: 事前情報フォーム + クイックスタート ----
     if not st.session_state.chat_history and selected_provider_id:
-        st.caption("💡 まず何を相談するか、下のボタンから選べます（自由入力も可）")
-        qs_cols = st.columns(2)
-        for i, qp in enumerate(QUICK_START_PROMPTS):
-            with qs_cols[i % 2]:
-                if st.button(qp["label"], key=f"qs_{i}", use_container_width=True):
-                    context_text = materials_to_context_text(st.session_state.materials)
-                    composed = qp["text"]
-                    if context_text:
-                        composed = f"{composed}\n\n【参考教材の要約】\n{context_text}"
-                    send_user_turn(qp["label"], composed)
-                    with chat_box:
-                        with st.chat_message("user"):
-                            st.markdown(qp["label"])
-                    stream_assistant_reply(chat_box)
-                    st.rerun()
+        st.markdown("##### 📝 まず事前情報を入力する（おすすめ）")
+        st.caption("学年・教科・単元名などをまとめて入力しておくと、AIが同じ質問を繰り返さずに済みます。")
+        with st.form("intake_form", clear_on_submit=False):
+            f_cols1 = st.columns(3)
+            with f_cols1[0]:
+                f_grade = st.text_input("学年", placeholder="例: 4年")
+            with f_cols1[1]:
+                f_subject = st.text_input("教科", placeholder="例: 算数")
+            with f_cols1[2]:
+                f_hours = st.text_input("総時数", placeholder="例: 6時間")
+            f_unit = st.text_input("単元名", placeholder="例: がい数")
+            f_objectives = st.text_area(
+                "単元のねらい・身につけさせたい力（任意）", placeholder="例: 四捨五入を使って概数を求められるようにする", height=70
+            )
+            f_situation = st.text_area(
+                "児童生徒の実態・気になる点（任意）", placeholder="例: 計算は得意だが文章題でつまずきやすい", height=70
+            )
+            f_textbook = st.text_input("使用教科書・教材（任意）", placeholder="例: 東京書籍 新編算数")
+            f_extra = st.text_area(
+                "その他の要望（任意）", placeholder="例: グループ活動を取り入れたい、ICTを使いたい 等", height=70
+            )
+            submitted = st.form_submit_button("🚀 この内容で相談を始める", type="primary", use_container_width=True)
+
+        if submitted:
+            intake = UnitIntake(
+                grade=f_grade, subject=f_subject, unit_name=f_unit, total_hours=f_hours,
+                objectives=f_objectives, student_situation=f_situation,
+                textbook=f_textbook, extra_requests=f_extra,
+            )
+            if intake.is_empty():
+                st.warning("少なくとも1項目は入力してください。")
+            else:
+                context_text = materials_to_context_text(st.session_state.materials)
+                composed = build_intake_prompt(intake)
+                if context_text:
+                    composed = f"{composed}\n\n【参考教材の要約】\n{context_text}"
+                display_text = intake.summary_label()
+                send_user_turn(display_text, composed)
+                with chat_box:
+                    with st.chat_message("user"):
+                        st.markdown(display_text)
+                stream_assistant_reply(chat_box)
+                st.rerun()
+
+        with st.expander("💬 またはボタンから気軽に始める"):
+            qs_cols = st.columns(2)
+            for i, qp in enumerate(QUICK_START_PROMPTS):
+                with qs_cols[i % 2]:
+                    if st.button(qp["label"], key=f"qs_{i}", use_container_width=True):
+                        context_text = materials_to_context_text(st.session_state.materials)
+                        composed = qp["text"]
+                        if context_text:
+                            composed = f"{composed}\n\n【参考教材の要約】\n{context_text}"
+                        send_user_turn(qp["label"], composed)
+                        with chat_box:
+                            with st.chat_message("user"):
+                                st.markdown(qp["label"])
+                        stream_assistant_reply(chat_box)
+                        st.rerun()
 
     user_input = st.chat_input(
         "授業の構想について相談してみましょう（例: 4年算数のがい数の単元、つまずきやすい点は？）"
