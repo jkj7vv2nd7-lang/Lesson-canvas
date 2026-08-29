@@ -18,6 +18,9 @@ canvas_page = st.Page(
 library_page = st.Page(
     "pages/library.py", title="共有教材ライブラリ", icon="📚"
 )
+approval_page = st.Page(
+    "pages/approval.py", title="確認・承認", icon="✅"
+)
 
-pg = st.navigation([canvas_page, library_page])
+pg = st.navigation([canvas_page, library_page, approval_page])
 pg.run()
