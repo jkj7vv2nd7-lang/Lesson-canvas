@@ -36,6 +36,7 @@ from core.session_store import (
 )
 from core.sources import fetch_url_material, image_to_material, materials_to_context_text, pdf_to_material
 from exporters.docx_builder import clean_html_tags, markdown_to_docx, sanitize_filename
+from exporters.diagram_builder import DiagramError, build_board_image_svg, build_unit_map_svg
 from exporters.pptx_builder import build_slide_outline_pptx
 from exporters.worksheet_pdf import build_worksheet_pdf
 
@@ -45,6 +46,12 @@ EXTRA_EXPORTS = {
     "quiz": "print_pdf",
     "slide_outline": "pptx",
     "differentiated_worksheet": "print_pdf",
+}
+
+# 成果物タイプごとに、どの図解を表示できるか
+DIAGRAM_KIND = {
+    "unit_plan": "unit_map",
+    "lesson_plan": "board_image",
 }
 
 FOOTER_NOTE = (
@@ -460,3 +467,27 @@ with canvas_col:
                             key=f"dl_pptx_{artifact.artifact_id}",
                             use_container_width=True,
                         )
+
+                # ---- 図で見る（単元マップ / 板書イメージ） ----
+                diagram_kind = DIAGRAM_KIND.get(artifact.artifact_type)
+                if diagram_kind:
+                    diagram_label = "🗺 単元マップを表示" if diagram_kind == "unit_map" else "🖼 板書イメージを表示"
+                    with st.expander(diagram_label):
+                        try:
+                            if diagram_kind == "unit_map":
+                                svg = build_unit_map_svg(edited, title=title)
+                            else:
+                                svg = build_board_image_svg(edited, title=title)
+                            st.markdown(
+                                f'<div style="max-width:100%;overflow-x:auto;">{svg}</div>',
+                                unsafe_allow_html=True,
+                            )
+                            st.download_button(
+                                "📥 SVGでダウンロード（拡大・印刷向き）",
+                                data=svg,
+                                file_name=f"{sanitize_filename(title)}_{diagram_kind}.svg",
+                                mime="image/svg+xml",
+                                key=f"dl_svg_{artifact.artifact_id}",
+                            )
+                        except DiagramError as e:
+                            st.info(str(e))
