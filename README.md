@@ -132,18 +132,33 @@ Google AI Studio 等でクォータ（利用上限）を設定しておくこと
 
 1. [supabase.com](https://supabase.com/) でアカウントを作成し、新しいプロジェクトを作成する
 2. プロジェクトの「SQL Editor」を開き、`sql/schema.sql` の内容をそのまま実行する
-   （教材ライブラリ用のテーブルと、学校内利用を想定した簡易アクセス設定が作られます）
+   （教材ライブラリ・確認承認フロー用のテーブルと、学校内利用を想定した簡易アクセス設定が作られます）
 3. 左メニュー「Storage」→「New bucket」で、名前を `materials` にしてバケットを作成する
    （Public bucketはオフのままでOK）
-4. 作成したバケットの「Policies」で、アップロード・ダウンロードを許可するポリシーを追加する
-   （学校内限定の簡易運用を想定しています。詳細は `sql/schema.sql` 内のコメントを参照）
-5. プロジェクトの「Settings → API」から `Project URL` と `anon public key` を確認する
-6. Streamlit Cloudの「Settings → Secrets」に以下を追加する:
+4. 作成したバケットの「Policies」タブで「New policy」→「For full customization」を選び、
+   SELECT・INSERT・UPDATE・DELETEすべてを許可するポリシー（USING/WITH CHECKに `true`）を追加する
+   （学校内限定の簡易運用を想定しています）
+5. 左メニュー「Integrations」→「Data API」を開き、「API URL」をコピーする
+   （`https://xxxxxxxx.supabase.co/rest/v1/` の形。末尾の `/rest/v1/` は使わないので後で削除します）
+6. 左メニュー「API Keys」を開き、**「Legacy API keys」**を選んで、`anon` というキー
+   （`eyJ...` から始まる長い文字列）をコピーする
+
+   ⚠️ **注意**: Supabaseの新しいAPI Keys画面では「Publishable key」（`sb_publishable_...`という短い形式）
+   が前面に出ていますが、これは本アプリが使っているライブラリのバージョンでは正しく認識できず
+   「Invalid API key」エラーになることがあります。必ず「Legacy API keys」から取得できる
+   **`anon`（`eyJ...`形式）** の方を使ってください。
+7. Streamlit Cloudの「Settings → Secrets」に以下を追加する（手順5でコピーしたURLは
+   末尾の `/rest/v1/` を削除してから使ってください）:
 
 ```toml
+[shared_api_keys]
+gemini = ""
+claude = ""
+openai = ""
+
 [supabase]
 url = "https://xxxxxxxx.supabase.co"
-key = "your-anon-public-key"
+key = "eyJ... から始まるanonキー"
 ```
 
 設定が完了すると、アプリのサイドバーに表示される「教材ライブラリ」ページが
