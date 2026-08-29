@@ -40,6 +40,36 @@ create policy "Allow delete for all" on materials_library
   for delete using (true);
 
 -- ------------------------------------------------------------
+-- 管理職の確認・承認フロー用テーブル
+-- ------------------------------------------------------------
+
+create table if not exists artifact_reviews (
+  id uuid primary key default gen_random_uuid(),
+  submitter_name text not null,
+  artifact_label text not null,
+  artifact_type text not null,
+  content_md text not null,
+  status text not null default 'pending',   -- 'pending' / 'approved' / 'rejected'
+  reviewer_name text default '',
+  reviewer_comment text default '',
+  created_at timestamptz not null default now(),
+  reviewed_at timestamptz
+);
+
+create index if not exists idx_artifact_reviews_status on artifact_reviews (status);
+
+alter table artifact_reviews enable row level security;
+
+create policy "Allow read for all (reviews)" on artifact_reviews
+  for select using (true);
+
+create policy "Allow insert for all (reviews)" on artifact_reviews
+  for insert with check (true);
+
+create policy "Allow update for all (reviews)" on artifact_reviews
+  for update using (true);
+
+-- ------------------------------------------------------------
 -- Storageバケットの作成（SQLではなくダッシュボードから行います）
 -- ------------------------------------------------------------
 -- 1. 左メニュー「Storage」→「New bucket」
