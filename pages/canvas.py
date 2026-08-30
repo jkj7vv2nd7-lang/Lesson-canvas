@@ -189,11 +189,19 @@ def stream_assistant_reply(chat_box) -> bool:
 
 
 def send_user_turn(display_text: str, composed_text: str | None = None) -> None:
-    """ユーザーの発話をチャットに追加する（実際にAIに送るテキストと画面表示用テキストを分けられる）。"""
+    """ユーザーの発話をチャットに追加する（実際にAIに送るテキストと画面表示用テキストを分けられる）。
+
+    教材（画像/PDF）は「まだ送信していないもの」だけを添付する。会話履歴は毎回の
+    API呼び出しでまるごと送信されるため、送信済みの教材を毎ターン添付し続けると
+    同じデータを何度も再送信することになり、リクエストが際限なく肥大化してしまう
+    （エラーや応答の遅さの原因になりうる）。1度送ればAIはその内容を踏まえて
+    以降の会話にも応答できるため、同じ教材を繰り返し送る必要はない。
+    """
     attachments = []
     for m in st.session_state.materials:
-        if m.data is not None:
+        if m.data is not None and m.name not in st.session_state.materials_sent:
             attachments.append({"mime_type": m.mime_type, "data": m.data, "name": m.name})
+            st.session_state.materials_sent.add(m.name)
     add_message("user", composed_text or display_text, attachments)
 
 
