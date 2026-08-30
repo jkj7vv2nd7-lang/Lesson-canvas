@@ -32,6 +32,9 @@ def init_session() -> None:
         st.session_state.chat_history: list[ChatMessage] = []
     if "materials" not in st.session_state:
         st.session_state.materials: list[Material] = []
+    if "materials_sent" not in st.session_state:
+        # すでにAIへ送信済みの教材名（同じ教材データを毎ターン再送信しないための記録）
+        st.session_state.materials_sent: set[str] = set()
     if "artifacts" not in st.session_state:
         st.session_state.artifacts: list[Artifact] = []
     if "active_artifact_id" not in st.session_state:
@@ -75,6 +78,7 @@ def reset_conversation(keep_artifacts: bool = True) -> None:
     生成済みの成果物はデフォルトで保持する（ダウンロードし忘れ防止）。"""
     st.session_state.chat_history = []
     st.session_state.materials = []
+    st.session_state.materials_sent = set()
     if not keep_artifacts:
         st.session_state.artifacts = []
         st.session_state.active_artifact_id = None
