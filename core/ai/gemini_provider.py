@@ -25,18 +25,25 @@ class GeminiProvider(AIProvider):
         strengths="教科書の画像・PDFを直接読み込ませるのに強い",
     )
 
-    def _to_gemini_parts(self, msg: ChatMessage) -> list:
-        parts = [msg.text] if msg.text else []
+    def _to_new_sdk_parts(self, msg: ChatMessage) -> list:
+        """新SDK(google-genai)用: 画像・PDFはPartオブジェクトに変換する。"""
+        parts: list = [msg.text] if msg.text else []
+        for att in msg.attachments:
+            if att["mime_type"].startswith("image/") or att["mime_type"] == "application/pdf":
+                parts.append(
+                    genai_types.Part.from_bytes(
+                        data=att["data"], mime_type=att["mime_type"]
+                    )
+                )
+        return parts
+
+    def _to_old_sdk_parts(self, msg: ChatMessage) -> list:
+        """旧SDK(google.generativeai)用: 画像はPIL.Imageとして渡す。"""
+        parts: list = [msg.text] if msg.text else []
         for att in msg.attachments:
             if att["mime_type"].startswith("image/"):
                 from PIL import Image
                 parts.append(Image.open(io.BytesIO(att["data"])))
-            elif att["mime_type"] == "application/pdf" and _USE_NEW_SDK:
-                parts.append(
-                    genai_types.Part.from_bytes(
-                        data=att["data"], mime_type="application/pdf"
-                    )
-                )
         return parts
 
     def stream_chat(
@@ -49,13 +56,13 @@ class GeminiProvider(AIProvider):
                 contents = []
                 for msg in history:
                     role = "model" if msg.role == "assistant" else "user"
+                    raw_parts = self._to_new_sdk_parts(msg)
                     contents.append(
                         genai_types.Content(
                             role=role,
                             parts=[
                                 p if isinstance(p, genai_types.Part) else genai_types.Part(text=p)
-                                if isinstance(p, str) else p
-                                for p in self._to_gemini_parts(msg)
+                                for p in raw_parts
                             ] or [genai_types.Part(text="")],
                         )
                     )
@@ -77,7 +84,7 @@ class GeminiProvider(AIProvider):
                 )
                 # 旧SDKはマルチターンより「直前のuserメッセージ+添付」を渡す簡易実装
                 last_user = next((m for m in reversed(history) if m.role == "user"), None)
-                payload = self._to_gemini_parts(last_user) if last_user else [""]
+                payload = self._to_old_sdk_parts(last_user) if last_user else [""]
                 response = model.generate_content(
                     payload,
                     stream=True,
