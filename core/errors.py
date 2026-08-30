@@ -24,3 +24,12 @@ def friendly_error_message(e: Exception) -> str:
         return "⚠️ 内容が安全フィルターに引っかかった可能性があります。表現を変えて再度お試しください。"
 
     return f"❌ エラーが発生しました: {e}"
+
+
+def is_transient_error(e: Exception) -> bool:
+    """タイムアウト・混雑など、少し待って再試行すれば成功しうる一時的なエラーかどうか。"""
+    text = str(e).lower()
+    return any(
+        keyword in text
+        for keyword in ["timeout", "timed out", "overloaded", "503", "502", "connection"]
+    )
