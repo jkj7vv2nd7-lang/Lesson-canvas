@@ -16,6 +16,9 @@ except ImportError:
     _USE_NEW_SDK = False
 
 
+_DEFAULT_TIMEOUT_MS = 180_000  # 3分。長文の翻訳・ブラッシュアップ等でも余裕を持たせる
+
+
 class GeminiProvider(AIProvider):
     info = ProviderInfo(
         provider_id="gemini",
@@ -52,7 +55,10 @@ class GeminiProvider(AIProvider):
         history = list(history)
         try:
             if _USE_NEW_SDK:
-                client = genai.Client(api_key=self.api_key)
+                client = genai.Client(
+                    api_key=self.api_key,
+                    http_options=genai_types.HttpOptions(timeout=_DEFAULT_TIMEOUT_MS),
+                )
                 contents = []
                 for msg in history:
                     role = "model" if msg.role == "assistant" else "user"

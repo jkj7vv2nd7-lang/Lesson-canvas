@@ -48,7 +48,7 @@ class ClaudeProvider(AIProvider):
         self, system_prompt: str, history: Iterable[ChatMessage]
     ) -> Generator[str, None, None]:
         try:
-            client = anthropic.Anthropic(api_key=self.api_key)
+            client = anthropic.Anthropic(api_key=self.api_key, timeout=180.0)
             messages = [
                 {"role": msg.role, "content": self._to_content_blocks(msg)}
                 for msg in history

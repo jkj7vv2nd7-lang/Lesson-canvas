@@ -38,7 +38,7 @@ class OpenAIProvider(AIProvider):
         self, system_prompt: str, history: Iterable[ChatMessage]
     ) -> Generator[str, None, None]:
         try:
-            client = OpenAI(api_key=self.api_key)
+            client = OpenAI(api_key=self.api_key, timeout=180.0)
             messages = [{"role": "system", "content": system_prompt}]
             for msg in history:
                 messages.append({

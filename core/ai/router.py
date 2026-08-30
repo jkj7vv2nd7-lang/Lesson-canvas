@@ -62,3 +62,30 @@ class AIRouter:
                 raise
             fb_provider = self.get_provider(*fallback)
             yield from fb_provider.stream_chat(system_prompt, history)
+
+    def chat_with_retry(
+        self,
+        provider_id: str,
+        model: str,
+        system_prompt: str,
+        history: Iterable[ChatMessage],
+        *,
+        attempts: int = 2,
+    ) -> str:
+        """一括生成（ブラッシュアップ・別パターン・翻訳等）向けの、失敗時1回だけ
+        自動再試行するヘルパー。タイムアウトや混雑など一時的なエラーの場合のみ
+        再試行し、それ以外（APIキー不正等）は即座に例外を投げる。"""
+        from ..errors import is_transient_error
+
+        history = list(history)
+        last_error: Exception | None = None
+        for attempt in range(attempts):
+            try:
+                provider = self.get_provider(provider_id, model)
+                return "".join(provider.stream_chat(system_prompt, history))
+            except Exception as e:
+                last_error = e
+                if attempt < attempts - 1 and is_transient_error(e):
+                    continue
+                raise
+        raise last_error  # pragma: no cover
