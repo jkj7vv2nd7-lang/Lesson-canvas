@@ -318,13 +318,11 @@ with chat_col:
         add_message("user", instruction)
         with st.spinner("生成中..."):
             try:
-                full_text = "".join(
-                    router.stream_chat(
-                        selected_provider_id,
-                        selected_model,
-                        CANVAS_SYSTEM_PROMPT,
-                        st.session_state.chat_history,
-                    )
+                full_text = router.chat_with_retry(
+                    selected_provider_id,
+                    selected_model,
+                    CANVAS_SYSTEM_PROMPT,
+                    st.session_state.chat_history,
                 )
                 full_text = clean_html_tags(full_text)
                 add_message("assistant", full_text)
@@ -423,13 +421,11 @@ with canvas_col:
                                 try:
                                     from core.ai.base import ChatMessage
                                     refine_prompt = build_refine_prompt(artifact.label, edited)
-                                    refined_text = "".join(
-                                        router.stream_chat(
-                                            refine_provider_id,
-                                            refine_model,
-                                            "あなたは日本の学校教育に精通した、厳格かつ的確な指導主事です。",
-                                            [ChatMessage(role="user", text=refine_prompt)],
-                                        )
+                                    refined_text = router.chat_with_retry(
+                                        refine_provider_id,
+                                        refine_model,
+                                        "あなたは日本の学校教育に精通した、厳格かつ的確な指導主事です。",
+                                        [ChatMessage(role="user", text=refine_prompt)],
                                     )
                                     artifact.content_md = clean_html_tags(refined_text)
                                     st.success("ブラッシュアップしました。内容を更新しました。")
@@ -461,12 +457,10 @@ with canvas_col:
                                 variant_prompt = build_variant_instruction(
                                     artifact.artifact_type, edited
                                 )
-                                variant_text = "".join(
-                                    router.stream_chat(
-                                        selected_provider_id, selected_model,
-                                        CANVAS_SYSTEM_PROMPT,
-                                        [ChatMessage(role="user", text=variant_prompt)],
-                                    )
+                                variant_text = router.chat_with_retry(
+                                    selected_provider_id, selected_model,
+                                    CANVAS_SYSTEM_PROMPT,
+                                    [ChatMessage(role="user", text=variant_prompt)],
                                 )
                                 add_artifact(Artifact(
                                     artifact_id=str(uuid.uuid4())[:8],
@@ -493,12 +487,10 @@ with canvas_col:
                             try:
                                 from core.ai.base import ChatMessage
                                 translate_prompt = build_translate_prompt(artifact.label, edited)
-                                translated_text = "".join(
-                                    router.stream_chat(
-                                        selected_provider_id, selected_model,
-                                        "You are a bilingual Japanese-English education assistant.",
-                                        [ChatMessage(role="user", text=translate_prompt)],
-                                    )
+                                translated_text = router.chat_with_retry(
+                                    selected_provider_id, selected_model,
+                                    "You are a bilingual Japanese-English education assistant.",
+                                    [ChatMessage(role="user", text=translate_prompt)],
                                 )
                                 add_artifact(Artifact(
                                     artifact_id=str(uuid.uuid4())[:8],
