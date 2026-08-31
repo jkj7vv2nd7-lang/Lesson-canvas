@@ -18,7 +18,11 @@ def friendly_error_message(e: Exception) -> str:
         return "🌐 通信がタイムアウトしました。ネットワーク状況をご確認の上、もう一度お試しください。"
 
     if "overloaded" in text or "503" in text or "502" in text:
-        return "🛠 AIサービスが混み合っているようです。少し時間をおいてからもう一度お試しください。"
+        return (
+            "🛠 AIサービス（Gemini等）のサーバーが混み合っているようです。"
+            "自動で複数回試しましたが解決しませんでした。数分待ってからもう一度お試しいただくか、"
+            "サイドバーで別のAI（Claude/OpenAI）に切り替えてお試しください。"
+        )
 
     if "safety" in text or "blocked" in text or "content_filter" in text:
         return "⚠️ 内容が安全フィルターに引っかかった可能性があります。表現を変えて再度お試しください。"
