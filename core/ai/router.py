@@ -72,17 +72,25 @@ class AIRouter:
         *,
         attempts: int = 3,
         backoff_seconds: float = 3.0,
+        allow_provider_fallback: bool = True,
     ) -> str:
         """一括生成（ブラッシュアップ・別パターン・翻訳等）向けの、失敗時に自動再試行する
-        ヘルパー。タイムアウトや混雑など一時的なエラーの場合のみ、少し待ってから
-        再試行する（AIサービス側の混雑が収まるのを待つ狙い）。それ以外
-        （APIキー不正等）は即座に例外を投げる。"""
+        ヘルパー。
+
+        - タイムアウトや混雑など一時的なエラーの場合、少し待ってから同じ
+          プロバイダーに再試行する（サービス側の混雑が収まるのを待つ狙い）
+        - APIの利用上限（クォータ）エラーの場合は、同じプロバイダーへの
+          再試行では解決しないため、他に設定済みのAIプロバイダーがあれば
+          自動的にそちらへ切り替えて試す（allow_provider_fallback=True の場合）
+        - それ以外（APIキー不正等）は即座に例外を投げる
+        """
         import time
 
-        from ..errors import is_transient_error
+        from ..errors import is_quota_error, is_transient_error
 
         history = list(history)
         last_error: Exception | None = None
+
         for attempt in range(attempts):
             try:
                 provider = self.get_provider(provider_id, model)
@@ -92,5 +100,18 @@ class AIRouter:
                 if attempt < attempts - 1 and is_transient_error(e):
                     time.sleep(backoff_seconds * (attempt + 1))  # 3秒→6秒と徐々に長く待つ
                     continue
-                raise
-        raise last_error  # pragma: no cover
+                break
+
+        # クォータ切れの場合、他に使えるプロバイダーがあれば自動的に切り替えて試す
+        if allow_provider_fallback and last_error is not None and is_quota_error(last_error):
+            other_provider_ids = [pid for pid in self.api_keys if pid != provider_id]
+            for other_pid in other_provider_ids:
+                try:
+                    other_model = _PROVIDER_CLASSES[other_pid].info.models[0]
+                    other_provider = self.get_provider(other_pid, other_model)
+                    return "".join(other_provider.stream_chat(system_prompt, history))
+                except Exception as e:
+                    last_error = e
+                    continue
+
+        raise last_error
