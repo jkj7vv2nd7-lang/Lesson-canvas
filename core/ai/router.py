@@ -70,11 +70,15 @@ class AIRouter:
         system_prompt: str,
         history: Iterable[ChatMessage],
         *,
-        attempts: int = 2,
+        attempts: int = 3,
+        backoff_seconds: float = 3.0,
     ) -> str:
-        """一括生成（ブラッシュアップ・別パターン・翻訳等）向けの、失敗時1回だけ
-        自動再試行するヘルパー。タイムアウトや混雑など一時的なエラーの場合のみ
-        再試行し、それ以外（APIキー不正等）は即座に例外を投げる。"""
+        """一括生成（ブラッシュアップ・別パターン・翻訳等）向けの、失敗時に自動再試行する
+        ヘルパー。タイムアウトや混雑など一時的なエラーの場合のみ、少し待ってから
+        再試行する（AIサービス側の混雑が収まるのを待つ狙い）。それ以外
+        （APIキー不正等）は即座に例外を投げる。"""
+        import time
+
         from ..errors import is_transient_error
 
         history = list(history)
@@ -86,6 +90,7 @@ class AIRouter:
             except Exception as e:
                 last_error = e
                 if attempt < attempts - 1 and is_transient_error(e):
+                    time.sleep(backoff_seconds * (attempt + 1))  # 3秒→6秒と徐々に長く待つ
                     continue
                 raise
         raise last_error  # pragma: no cover
