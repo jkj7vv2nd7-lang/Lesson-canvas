@@ -37,3 +37,14 @@ def is_transient_error(e: Exception) -> bool:
         keyword in text
         for keyword in ["timeout", "timed out", "overloaded", "503", "502", "connection"]
     )
+
+
+def is_quota_error(e: Exception) -> bool:
+    """APIの利用上限（クォータ）・レート制限によるエラーかどうか。
+    この種のエラーは同じプロバイダーへの再試行では解決しないため、
+    別のAIプロバイダーへの自動切り替えの判断に使う。"""
+    text = str(e).lower()
+    return any(
+        keyword in text
+        for keyword in ["quota", "rate limit", "429", "resource_exhausted"]
+    )
